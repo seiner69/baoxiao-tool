@@ -154,49 +154,64 @@
             submitBtn.textContent = '处理中...';
             result.classList.remove('show');
 
-            const formData = new FormData();
-            formData.append('image', fileInput.files[0]);
+            // 转为base64
+            const file = fileInput.files[0];
+            const reader = new FileReader();
 
-            try {
-                const resp = await fetch(API_URL, {
-                    method: 'POST',
-                    body: formData
-                });
+            reader.onload = async () => {
+                const base64 = reader.result.split(',')[1];
 
-                const data = await resp.json();
-                result.classList.add('show');
+                try {
+                    const resp = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({image: base64})
+                    });
 
-                if (data.error) {
-                    result.classList.add('error');
-                    result.classList.remove('success');
-                    resultTitle.textContent = '处理失败';
-                    resultContent.textContent = data.error;
-                    downloadBtn.style.display = 'none';
-                } else {
-                    result.classList.add('success');
-                    result.classList.remove('error');
-                    resultTitle.textContent = '处理成功';
-                    resultContent.innerHTML = `
-                        <p>金额: ${data.data?.amount || '未识别'}</p>
-                        <p>商户: ${data.data?.merchant || '未识别'}</p>
-                    `;
-                    if (data.download_url) {
-                        downloadBtn.href = data.download_url;
-                        downloadBtn.style.display = 'block';
-                    } else {
+                    const data = await resp.json();
+                    result.classList.add('show');
+
+                    if (data.error) {
+                        result.classList.add('error');
+                        result.classList.remove('success');
+                        resultTitle.textContent = '处理失败';
+                        resultContent.textContent = data.error;
                         downloadBtn.style.display = 'none';
+                    } else {
+                        result.classList.add('success');
+                        result.classList.remove('error');
+                        resultTitle.textContent = '处理成功';
+                        resultContent.innerHTML = `
+                            <p>金额: ${data.data?.amount || '未识别'}</p>
+                            <p>商户: ${data.data?.merchant || '未识别'}</p>
+                        `;
+                        if (data.download_url) {
+                            downloadBtn.href = data.download_url;
+                            downloadBtn.style.display = 'block';
+                        } else {
+                            downloadBtn.style.display = 'none';
+                        }
                     }
+                } catch (err) {
+                    result.classList.add('show', 'error');
+                    resultTitle.textContent = '请求失败';
+                    resultContent.textContent = err.message;
+                    downloadBtn.style.display = 'none';
                 }
-            } catch (err) {
-                result.classList.add('show', 'error');
-                resultTitle.textContent = '请求失败';
-                resultContent.textContent = err.message;
-                downloadBtn.style.display = 'none';
-            }
 
-            submitBtn.textContent = '开始处理';
-            submitBtn.disabled = false;
-        };
+                submitBtn.textContent = '开始处理';
+                submitBtn.disabled = false;
+            };
+
+            reader.onerror = () => {
+                result.classList.add('show', 'error');
+                resultTitle.textContent = '读取文件失败';
+                resultContent.textContent = '无法读取文件';
+                submitBtn.textContent = '开始处理';
+                submitBtn.disabled = false;
+            };
+
+            reader.readAsDataURL(file);
     </script>
 </body>
 </html>
