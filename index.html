@@ -91,7 +91,7 @@
             <div class="upload-icon">📷</div>
             <p>点击或拖拽图片到这里<br><strong>PNG/JPG</strong></p>
         </div>
-        <input type="file" id="fileInput" accept="image/png,image/jpeg">
+        <input type="file" id="fileInput" accept="image/png,image/jpeg" multiple>
 
         <div class="file-info" id="fileInfo"></div>
         <button class="btn" id="submitBtn" disabled>开始处理</button>
@@ -99,7 +99,7 @@
         <div class="result" id="result">
             <h2 id="resultTitle"></h2>
             <div id="resultContent"></div>
-            <a class="download-btn" id="downloadBtn" href="#" download>下载Excel</a>
+            <a class="download-btn" id="downloadBtn" href="#" target="_blank">打开并下载 Excel</a>
         </div>
 
         <ul class="tips">
@@ -109,109 +109,119 @@
     </div>
 
     <script>
-        // TODO: 替换为你的FC API地址
-        const API_URL = 'https://baoxiao-mopfweseib.cn-hangzhou.fcapp.run';
+        var API_URL = 'https://baoxiao-mopfweseib.cn-hangzhou.fcapp.run';
 
-        const uploadArea = document.getElementById('uploadArea');
-        const fileInput = document.getElementById('fileInput');
-        const fileInfo = document.getElementById('fileInfo');
-        const submitBtn = document.getElementById('submitBtn');
-        const result = document.getElementById('result');
-        const resultTitle = document.getElementById('resultTitle');
-        const resultContent = document.getElementById('resultContent');
-        const downloadBtn = document.getElementById('downloadBtn');
+        var uploadArea = document.getElementById('uploadArea');
+        var fileInput = document.getElementById('fileInput');
+        var fileInfo = document.getElementById('fileInfo');
+        var submitBtn = document.getElementById('submitBtn');
+        var result = document.getElementById('result');
+        var resultTitle = document.getElementById('resultTitle');
+        var resultContent = document.getElementById('resultContent');
+        var downloadBtn = document.getElementById('downloadBtn');
 
-        uploadArea.onclick = () => fileInput.click();
-        fileInput.onchange = (e) => {
-            const file = e.target.files[0];
+        uploadArea.onclick = function() {
+            fileInput.click();
+        };
+
+        fileInput.onchange = function(e) {
+            var file = e.target.files[0];
             if (file) {
-                fileInfo.textContent = `已选择: ${file.name}`;
+                fileInfo.textContent = '已选择: ' + file.name;
                 fileInfo.classList.add('show');
                 submitBtn.disabled = false;
             }
         };
 
         // 拖拽
-        uploadArea.ondragover = (e) => { e.preventDefault(); uploadArea.style.borderColor = '#667eea'; };
-        uploadArea.ondragleave = () => { uploadArea.style.borderColor = '#ddd'; };
-        uploadArea.ondrop = (e) => {
+        uploadArea.ondragover = function(e) {
+            e.preventDefault();
+            uploadArea.style.borderColor = '#667eea';
+        };
+        uploadArea.ondragleave = function() {
+            uploadArea.style.borderColor = '#ddd';
+        };
+        uploadArea.ondrop = function(e) {
             e.preventDefault();
             uploadArea.style.borderColor = '#ddd';
             if (e.dataTransfer.files[0]) {
                 fileInput.files = e.dataTransfer.files;
-                const file = e.dataTransfer.files[0];
-                fileInfo.textContent = `已选择: ${file.name}`;
+                var file = e.dataTransfer.files[0];
+                fileInfo.textContent = '已选择: ' + file.name;
                 fileInfo.classList.add('show');
                 submitBtn.disabled = false;
             }
         };
 
-        // 提交
-        submitBtn.onclick = async () => {
-            if (!fileInput.files[0]) return;
+// 提交
+        submitBtn.onclick = async function() {
+            var files = fileInput.files;
+            if (files.length === 0) {
+                alert('请先选择图片文件');
+                return;
+            }
 
             submitBtn.disabled = true;
-            submitBtn.textContent = '处理中...';
+            submitBtn.textContent = `正在拼命处理 ${files.length} 张图片...`;
             result.classList.remove('show');
 
-            // 转为base64
-            const file = fileInput.files[0];
-            const reader = new FileReader();
-
-            reader.onload = async () => {
-                const base64 = reader.result.split(',')[1];
-
-                try {
-                    const resp = await fetch(API_URL, {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({image: base64})
+            try {
+                // 1. 批量读取所有图片为 Base64
+                const base64Images = [];
+                for (let i = 0; i < files.length; i++) {
+                    const base64 = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result.split(',')[1]);
+                        reader.onerror = () => reject(new Error('读取文件失败'));
+                        reader.readAsDataURL(files[i]);
                     });
+                    base64Images.push(base64);
+                }
 
-                    const data = await resp.json();
-                    result.classList.add('show');
+                // 2. 发送请求给阿里云 (把 image 字段改为 images 数组)
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', API_URL, true);
+                xhr.setRequestHeader('Content-Type', 'application/json');
 
-                    if (data.error) {
-                        result.classList.add('error');
-                        result.classList.remove('success');
-                        resultTitle.textContent = '处理失败';
-                        resultContent.textContent = data.error;
-                        downloadBtn.style.display = 'none';
-                    } else {
-                        result.classList.add('success');
-                        result.classList.remove('error');
-                        resultTitle.textContent = '处理成功';
-                        resultContent.innerHTML = `
-                            <p>金额: ${data.data?.amount || '未识别'}</p>
-                            <p>商户: ${data.data?.merchant || '未识别'}</p>
-                        `;
-                        if (data.download_url) {
-                            downloadBtn.href = data.download_url;
-                            downloadBtn.style.display = 'block';
-                        } else {
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState === 4) {
+                        submitBtn.textContent = '开始处理';
+                        submitBtn.disabled = false;
+                        result.classList.add('show');
+
+                        try {
+                            var data = JSON.parse(xhr.responseText);
+                            if (data.error) {
+                                result.classList.add('error');
+                                resultTitle.textContent = '处理失败';
+                                resultContent.textContent = data.error;
+                                downloadBtn.style.display = 'none';
+                            } else {
+                                result.classList.add('success');
+                                result.classList.remove('error');
+                                resultTitle.textContent = '🎉 批量处理完成！';
+                                resultContent.innerHTML = `<p>共成功识别并生成 <b>${data.count}</b> 条报销记录。</p>`;
+                                downloadBtn.href = data.download_url;
+                                downloadBtn.style.display = 'block';
+                            }
+                        } catch(err) {
+                            result.classList.add('error');
+                            resultTitle.textContent = '请求失败';
+                            resultContent.textContent = '解析响应失败';
                             downloadBtn.style.display = 'none';
                         }
                     }
-                } catch (err) {
-                    result.classList.add('show', 'error');
-                    resultTitle.textContent = '请求失败';
-                    resultContent.textContent = err.message;
-                    downloadBtn.style.display = 'none';
-                }
+                };
+                
+                // 注意这里发送的是 images 数组
+                xhr.send(JSON.stringify({images: base64Images}));
 
-                submitBtn.textContent = '开始处理';
+            } catch (error) {
+                alert(error.message);
                 submitBtn.disabled = false;
-            };
-
-            reader.onerror = () => {
-                result.classList.add('show', 'error');
-                resultTitle.textContent = '读取文件失败';
-                resultContent.textContent = '无法读取文件';
                 submitBtn.textContent = '开始处理';
-                submitBtn.disabled = false;
-            };
-
-            reader.readAsDataURL(file);
+            }
+        };
     </script>
 </body>
 </html>
